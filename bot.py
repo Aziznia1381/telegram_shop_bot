@@ -1,4 +1,5 @@
 import os
+import hashlib
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
@@ -26,9 +27,41 @@ from database import (
 # =========================
 
 TOKEN = os.getenv("BOT_TOKEN")
-ADMIN_CHAT_ID = 287587804
+ADMIN_CHAT_ID = int(os.getenv("ADMIN_CHAT_ID", "0"))
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+PORT = int(os.getenv("PORT", "10000"))
+RENDER_EXTERNAL_HOSTNAME = os.getenv("RENDER_EXTERNAL_HOSTNAME")
+
+
+# =========================
+# بررسی تنظیمات
+# =========================
+
+if not TOKEN:
+    raise RuntimeError("BOT_TOKEN تنظیم نشده است.")
+
+if ADMIN_CHAT_ID == 0:
+    raise RuntimeError("ADMIN_CHAT_ID تنظیم نشده است.")
+
+if not RENDER_EXTERNAL_HOSTNAME:
+    raise RuntimeError(
+        "RENDER_EXTERNAL_HOSTNAME پیدا نشد. "
+        "این نسخه برای اجرای Webhook روی Render ساخته شده است."
+    )
+
+
+# مسیر اختصاصی Webhook
+# توکن ربات داخل URL قرار نمی‌گیرد.
+WEBHOOK_PATH = (
+    "telegram/"
+    + hashlib.sha256(TOKEN.encode()).hexdigest()[:32]
+)
+
+WEBHOOK_URL = (
+    f"https://{RENDER_EXTERNAL_HOSTNAME}/{WEBHOOK_PATH}"
+)
 
 
 # =========================
@@ -101,10 +134,30 @@ def get_cart_total(context):
 
 def main_menu():
     keyboard = [
-        [InlineKeyboardButton("🛍 محصولات", callback_data="products")],
-        [InlineKeyboardButton("🛒 سبد خرید", callback_data="cart")],
-        [InlineKeyboardButton("📦 ثبت سفارش", callback_data="start_order")],
-        [InlineKeyboardButton("📞 پشتیبانی", callback_data="support")],
+        [
+            InlineKeyboardButton(
+                "🛍 محصولات",
+                callback_data="products",
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "🛒 سبد خرید",
+                callback_data="cart",
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "📦 ثبت سفارش",
+                callback_data="start_order",
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "📞 پشتیبانی",
+                callback_data="support",
+            )
+        ],
     ]
 
     return InlineKeyboardMarkup(keyboard)
@@ -137,7 +190,12 @@ def admin_menu():
 
 def back_button(callback_data):
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🔙 بازگشت", callback_data=callback_data)]
+        [
+            InlineKeyboardButton(
+                "🔙 بازگشت",
+                callback_data=callback_data,
+            )
+        ]
     ])
 
 
@@ -166,7 +224,8 @@ def cart_text(context):
 
     text += (
         "━━━━━━━━━━━━━━\n"
-        f"💰 مبلغ کل: {format_price(get_cart_total(context))} تومان"
+        f"💰 مبلغ کل: "
+        f"{format_price(get_cart_total(context))} تومان"
     )
 
     return text
@@ -286,7 +345,9 @@ async def show_product(update, context, product_id):
     product = products.get(product_id)
 
     if not product:
-        await query.message.reply_text("❌ محصول پیدا نشد.")
+        await query.message.reply_text(
+            "❌ محصول پیدا نشد."
+        )
         return
 
     text = (
@@ -310,7 +371,10 @@ async def show_product(update, context, product_id):
         ],
     ]
 
-    image_path = os.path.join(BASE_DIR, product["image"])
+    image_path = os.path.join(
+        BASE_DIR,
+        product["image"],
+    )
 
     await query.message.delete()
 
@@ -332,22 +396,28 @@ async def add_to_cart(update, context, product_id):
     query = update.callback_query
 
     if product_id not in products:
-        await query.answer("❌ محصول پیدا نشد.")
+        await query.answer(
+            "❌ محصول پیدا نشد."
+        )
         return
 
     cart = get_cart(context)
     cart[product_id] = cart.get(product_id, 0) + 1
 
-    await query.answer("✅ محصول به سبد خرید اضافه شد!")
+    await query.answer(
+        "✅ محصول به سبد خرید اضافه شد!"
+    )
 
 
 # =========================
 # سبد خرید
 # =========================
 
-async def show_cart(update, context):
+async def show_cart(update, context, answer=True):
     query = update.callback_query
-    await query.answer()
+
+    if answer:
+        await query.answer()
 
     cart = get_cart(context)
 
@@ -437,8 +507,15 @@ async def increase_product(update, context, product_id):
     if product_id in cart:
         cart[product_id] += 1
 
-    await query.answer()
-    await show_cart(update, context)
+    await query.answer(
+        "➕ تعداد افزایش یافت."
+    )
+
+    await show_cart(
+        update,
+        context,
+        answer=False,
+    )
 
 
 async def decrease_product(update, context, product_id):
@@ -451,8 +528,15 @@ async def decrease_product(update, context, product_id):
         if cart[product_id] <= 0:
             del cart[product_id]
 
-    await query.answer()
-    await show_cart(update, context)
+    await query.answer(
+        "➖ تعداد کاهش یافت."
+    )
+
+    await show_cart(
+        update,
+        context,
+        answer=False,
+    )
 
 
 async def remove_product(update, context, product_id):
@@ -461,8 +545,15 @@ async def remove_product(update, context, product_id):
 
     cart.pop(product_id, None)
 
-    await query.answer()
-    await show_cart(update, context)
+    await query.answer(
+        "🗑 محصول حذف شد."
+    )
+
+    await show_cart(
+        update,
+        context,
+        answer=False,
+    )
 
 
 async def clear_cart(update, context):
@@ -501,7 +592,9 @@ async def start_order(update, context):
 
 
 async def get_name(update, context):
-    context.user_data["name"] = update.message.text.strip()
+    context.user_data["name"] = (
+        update.message.text.strip()
+    )
 
     await update.message.reply_text(
         "📞 لطفاً شماره تلفن خود را وارد کنید:"
@@ -511,7 +604,9 @@ async def get_name(update, context):
 
 
 async def get_phone(update, context):
-    context.user_data["phone"] = update.message.text.strip()
+    context.user_data["phone"] = (
+        update.message.text.strip()
+    )
 
     await update.message.reply_text(
         "📍 لطفاً آدرس کامل خود را وارد کنید:"
@@ -521,7 +616,9 @@ async def get_phone(update, context):
 
 
 async def get_address(update, context):
-    context.user_data["address"] = update.message.text.strip()
+    context.user_data["address"] = (
+        update.message.text.strip()
+    )
 
     if not get_cart(context):
         await update.message.reply_text(
@@ -618,8 +715,10 @@ async def payment_online(update, context):
 
     await query.message.edit_text(
         "💳 پرداخت آنلاین\n\n"
-        f"💰 مبلغ سفارش: {format_price(total)} تومان\n\n"
-        "🔗 درگاه پرداخت در مرحله بعد به ربات متصل می‌شود.",
+        f"💰 مبلغ سفارش: "
+        f"{format_price(total)} تومان\n\n"
+        "🔗 درگاه پرداخت در مرحله بعد "
+        "به ربات متصل می‌شود.",
         reply_markup=InlineKeyboardMarkup(keyboard),
     )
 
@@ -643,7 +742,10 @@ async def register_cash_order(update, context):
     phone = context.user_data.get("phone", "")
     address = context.user_data.get("address", "")
     total = get_cart_total(context)
-    products_text = order_products_text(context, short=True)
+    products_text = order_products_text(
+        context,
+        short=True,
+    )
 
     order_id = save_order(
         name,
@@ -700,7 +802,12 @@ async def cancel_order(update, context):
 
 
 async def back_to_cart(update, context):
-    await show_cart(update, context)
+    await show_cart(
+        update,
+        context,
+        answer=True,
+    )
+
     return ConversationHandler.END
 
 
@@ -725,7 +832,9 @@ async def support(update, context):
 
 async def admin(update, context):
     if not is_admin(update.effective_user.id):
-        await update.message.reply_text("⛔ دسترسی غیرمجاز.")
+        await update.message.reply_text(
+            "⛔ دسترسی غیرمجاز."
+        )
         return
 
     await update.message.reply_text(
@@ -739,7 +848,9 @@ async def admin_new_orders(update, context):
     await query.answer()
 
     if not is_admin(query.from_user.id):
-        await query.message.edit_text("⛔ دسترسی غیرمجاز.")
+        await query.message.edit_text(
+            "⛔ دسترسی غیرمجاز."
+        )
         return
 
     orders = [
@@ -784,7 +895,9 @@ async def admin_all_orders(update, context):
     await query.answer()
 
     if not is_admin(query.from_user.id):
-        await query.message.edit_text("⛔ دسترسی غیرمجاز.")
+        await query.message.edit_text(
+            "⛔ دسترسی غیرمجاز."
+        )
         return
 
     orders = get_orders()
@@ -824,13 +937,17 @@ async def admin_order_details(update, context, order_id):
     await query.answer()
 
     if not is_admin(query.from_user.id):
-        await query.message.edit_text("⛔ دسترسی غیرمجاز.")
+        await query.message.edit_text(
+            "⛔ دسترسی غیرمجاز."
+        )
         return
 
     order = get_order(order_id)
 
     if not order:
-        await query.message.edit_text("❌ سفارش پیدا نشد.")
+        await query.message.edit_text(
+            "❌ سفارش پیدا نشد."
+        )
         return
 
     (
@@ -891,7 +1008,9 @@ async def admin_stats(update, context):
     await query.answer()
 
     if not is_admin(query.from_user.id):
-        await query.message.edit_text("⛔ دسترسی غیرمجاز.")
+        await query.message.edit_text(
+            "⛔ دسترسی غیرمجاز."
+        )
         return
 
     orders = get_orders()
@@ -910,8 +1029,10 @@ async def admin_stats(update, context):
     text = (
         "📊 آمار فروشگاه\n\n"
         f"📦 تعداد کل سفارش‌ها: {len(orders)}\n"
-        f"✅ سفارش‌های تأییدشده: {len(approved_orders)}\n"
-        f"💰 مجموع فروش: {format_price(total_sales)} تومان"
+        f"✅ سفارش‌های تأییدشده: "
+        f"{len(approved_orders)}\n"
+        f"💰 مجموع فروش: "
+        f"{format_price(total_sales)} تومان"
     )
 
     await query.message.edit_text(
@@ -926,7 +1047,8 @@ async def admin_stats(update, context):
 
 async def my_id(update, context):
     await update.message.reply_text(
-        f"🆔 Chat ID شما:\n\n{update.effective_user.id}"
+        f"🆔 Chat ID شما:\n\n"
+        f"{update.effective_user.id}"
     )
 
 
@@ -942,23 +1064,39 @@ async def button_handler(update, context):
         await show_products(update, context)
 
     elif data == "category_bag":
-        await show_category(update, context, "bag")
+        await show_category(
+            update,
+            context,
+            "bag",
+        )
 
     elif data == "category_shoe":
-        await show_category(update, context, "shoe")
+        await show_category(
+            update,
+            context,
+            "shoe",
+        )
 
     elif data.startswith("product_"):
         await show_product(
             update,
             context,
-            data.replace("product_", "", 1),
+            data.replace(
+                "product_",
+                "",
+                1,
+            ),
         )
 
     elif data.startswith("add_"):
         await add_to_cart(
             update,
             context,
-            data.replace("add_", "", 1),
+            data.replace(
+                "add_",
+                "",
+                1,
+            ),
         )
 
     elif data == "cart":
@@ -968,21 +1106,33 @@ async def button_handler(update, context):
         await increase_product(
             update,
             context,
-            data.replace("increase_", "", 1),
+            data.replace(
+                "increase_",
+                "",
+                1,
+            ),
         )
 
     elif data.startswith("decrease_"):
         await decrease_product(
             update,
             context,
-            data.replace("decrease_", "", 1),
+            data.replace(
+                "decrease_",
+                "",
+                1,
+            ),
         )
 
     elif data.startswith("remove_"):
         await remove_product(
             update,
             context,
-            data.replace("remove_", "", 1),
+            data.replace(
+                "remove_",
+                "",
+                1,
+            ),
         )
 
     elif data == "clear_cart":
@@ -993,22 +1143,33 @@ async def button_handler(update, context):
 
     elif data == "back_main":
         await query.answer()
+
         await query.message.edit_text(
             "🏠 منوی اصلی:",
             reply_markup=main_menu(),
         )
 
     elif data == "admin_new_orders":
-        await admin_new_orders(update, context)
+        await admin_new_orders(
+            update,
+            context,
+        )
 
     elif data == "admin_all_orders":
-        await admin_all_orders(update, context)
+        await admin_all_orders(
+            update,
+            context,
+        )
 
     elif data == "admin_stats":
-        await admin_stats(update, context)
+        await admin_stats(
+            update,
+            context,
+        )
 
     elif data == "admin_back":
         await query.answer()
+
         await query.message.edit_text(
             "🔐 پنل مدیریت فروشگاه",
             reply_markup=admin_menu(),
@@ -1016,7 +1177,11 @@ async def button_handler(update, context):
 
     elif data.startswith("admin_order_"):
         order_id = int(
-            data.replace("admin_order_", "", 1)
+            data.replace(
+                "admin_order_",
+                "",
+                1,
+            )
         )
 
         await admin_order_details(
@@ -1029,11 +1194,17 @@ async def button_handler(update, context):
         await query.answer()
 
         if not is_admin(query.from_user.id):
-            await query.message.edit_text("⛔ دسترسی غیرمجاز.")
+            await query.message.edit_text(
+                "⛔ دسترسی غیرمجاز."
+            )
             return
 
         order_id = int(
-            data.replace("approve_order_", "", 1)
+            data.replace(
+                "approve_order_",
+                "",
+                1,
+            )
         )
 
         update_order_status(
@@ -1050,11 +1221,17 @@ async def button_handler(update, context):
         await query.answer()
 
         if not is_admin(query.from_user.id):
-            await query.message.edit_text("⛔ دسترسی غیرمجاز.")
+            await query.message.edit_text(
+                "⛔ دسترسی غیرمجاز."
+            )
             return
 
         order_id = int(
-            data.replace("reject_order_", "", 1)
+            data.replace(
+                "reject_order_",
+                "",
+                1,
+            )
         )
 
         update_order_status(
@@ -1071,11 +1248,17 @@ async def button_handler(update, context):
         await query.answer()
 
         if not is_admin(query.from_user.id):
-            await query.message.edit_text("⛔ دسترسی غیرمجاز.")
+            await query.message.edit_text(
+                "⛔ دسترسی غیرمجاز."
+            )
             return
 
         order_id = int(
-            data.replace("delete_order_", "", 1)
+            data.replace(
+                "delete_order_",
+                "",
+                1,
+            )
         )
 
         delete_order(order_id)
@@ -1090,13 +1273,17 @@ async def button_handler(update, context):
 
 
 # =========================
-# اجرای ربات
+# اجرای Webhook روی Render
 # =========================
 
 def main():
     create_tables()
 
-    app = Application.builder().token(TOKEN).build()
+    app = (
+        Application.builder()
+        .token(TOKEN)
+        .build()
+    )
 
     order_conversation = ConversationHandler(
         entry_points=[
@@ -1148,31 +1335,60 @@ def main():
             ],
         },
         fallbacks=[
-            CommandHandler("start", start),
+            CommandHandler(
+                "start",
+                start,
+            ),
         ],
         per_message=False,
     )
 
     app.add_handler(
-        CommandHandler("start", start)
+        CommandHandler(
+            "start",
+            start,
+        )
     )
 
     app.add_handler(
-        CommandHandler("myid", my_id)
+        CommandHandler(
+            "myid",
+            my_id,
+        )
     )
 
     app.add_handler(
-        CommandHandler("admin", admin)
+        CommandHandler(
+            "admin",
+            admin,
+        )
     )
 
-    app.add_handler(order_conversation)
+    app.add_handler(
+        order_conversation
+    )
 
     app.add_handler(
-        CallbackQueryHandler(button_handler)
+        CallbackQueryHandler(
+            button_handler
+        )
     )
 
     print("ربات آماده است...")
-    app.run_polling()
+    print(
+        f"Webhook URL: {WEBHOOK_URL}"
+    )
+    print(
+        f"Listening on 0.0.0.0:{PORT}"
+    )
+
+    app.run_webhook(
+        listen="0.0.0.0",
+        port=PORT,
+        url_path=WEBHOOK_PATH,
+        webhook_url=WEBHOOK_URL,
+        allowed_updates=Update.ALL_TYPES,
+    )
 
 
 if __name__ == "__main__":
