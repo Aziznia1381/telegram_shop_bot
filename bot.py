@@ -25,7 +25,7 @@ from database import (
 # تنظیمات
 # =========================
 
-TOKEN = "8831948563:AAG9DR7N6LI3fSBRQngP5ppvf7aJWgEN3p0"
+TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_CHAT_ID = 287587804
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
